@@ -4,191 +4,200 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function Home() {
-  const [subject, setSubject] = useState("");  // For the note subject
-  const [textNote, setTextNote] = useState(""); // For the detailed note
-  const [urlNote, setUrlNote] = useState("");   // For the URL
-  const [imageNote, setImageNote] = useState(null); // For the image
-  const [isRecording, setIsRecording] = useState(false); // For recording state
-  const [notes, setNotes] = useState([]); // Store the notes
-  const [searchQuery, setSearchQuery] = useState(""); // For searching notes
+  const [subject, setSubject] = useState("");
+  const [textNote, setTextNote] = useState("");
+  const [urlNote, setUrlNote] = useState("");
+  const [imageNote, setImageNote] = useState(null);
+  const [notes, setNotes] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Login state
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showMenu, setShowMenu] = useState(false); // Toggle menu dropdown
+
   const router = useRouter();
 
   useEffect(() => {
-    // Retrieve saved notes from MongoDB on page load
-    const fetchNotes = async () => {
-      const response = await fetch('/api/notes');
-      const data = await response.json();
-      setNotes(data);
-    };
+    const token = localStorage.getItem("token");
+    const storedEmail = localStorage.getItem("email");
+    if (token && storedEmail) {
+      setIsLoggedIn(true);
+      setEmail(storedEmail);
+    }
     fetchNotes();
   }, []);
 
-  const handleNavigateToNotes = () => {
-    router.push("/notes"); // Redirects to notes page
-  };
-
-  let recognition = null;
-  if (typeof window !== "undefined") {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      recognition = new SpeechRecognition();
-      recognition.continuous = true; // Keep listening
-      recognition.interimResults = true;
-      recognition.lang = "en-US";
-
-      recognition.onstart = () => setIsRecording(true);
-      recognition.onend = () => setIsRecording(false);
-
-      recognition.onresult = (event) => {
-        let transcript = "";
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript + " ";
-        }
-        setTextNote(transcript.trim()); // Update text field in real-time
-      };
-    }
-  }
-
-  const startRecording = () => {
-    if (!recognition) {
-      alert("Speech Recognition API is not supported in this browser.");
-      return;
-    }
-    recognition.start();
-  };
-
-  const stopRecording = () => {
-    if (!recognition) {
-      alert("Speech Recognition API is not supported in this browser.");
-      return;
-    }
-    recognition.stop();
-  };
-
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleSubmit = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (!subject.trim() || !textNote.trim()) return; // Prevent empty notes
+    setError("");
 
-    const newNote = {
-      subject,
-      text: textNote,
-      url: urlNote,
-      image: imageNote,
-      timestamp: new Date().toLocaleString(),
-    };
+    console.log("Attempting to log in with:", { email, password }); // Log email and password
 
-    const updatedNotes = [...notes, newNote];
-    setNotes(updatedNotes);
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
 
-    // Save the updated notes to localStorage
-    localStorage.setItem("notes", JSON.stringify(updatedNotes));
+    console.log("Response status:", response.status); // Log response status
 
-    setSubject("");
-    setTextNote("");
-    setUrlNote("");
-    setImageNote(null);
+    if (response.ok) {
+      const data = await response.json();
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("email", email); // Store email
+      setIsLoggedIn(true);
+    } else {
+      const errorData = await response.json();
+      setError(errorData.message);
+      console.log("Error message:", errorData.message); // Log error message
+    }
   };
 
-  const filteredNotes = notes.filter((note) =>
-    note.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    note.subject.toLowerCase().includes(searchQuery.toLowerCase()) // Search in both subject and text
-  );
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("email");
+    setIsLoggedIn(false);
+    setEmail("");
+  };
+
+  const fetchNotes = async () => {
+    const response = await fetch('/api/notes');
+    const data = await response.json();
+    setNotes(data);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!subject.trim() || !textNote.trim()) return;
+
+    const newNote = { subject, text: textNote, url: urlNote, image: imageNote };
+    const response = await fetch("/api/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newNote),
+    });
+
+    if (response.ok) {
+      fetchNotes();
+      setSubject("");
+      setTextNote("");
+      setUrlNote("");
+      setImageNote(null);
+    }
+  };
 
   return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4">Note-Taking App</h1>
-      <input
-        type="text"
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        placeholder="Search notes by subject or text"
-        className="border p-2 mb-4 w-full"
-      />
-      <form onSubmit={handleSubmit} className="mb-4">
-        <input
-          type="text"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder="Subject of your note"
-          className="border p-2 mb-2 w-full"
-        />
-        <textarea
-          value={textNote}
-          onChange={(e) => setTextNote(e.target.value)}
-          placeholder="Enter or speak your note"
-          className="border p-2 mb-2 w-full h-32"
-        />
-        <input
-          type="url"
-          value={urlNote}
-          onChange={(e) => setUrlNote(e.target.value)}
-          placeholder="Enter URL"
-          className="border p-2 mb-2 w-full"
-        />
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleImageUpload}
-          className="border p-2 mb-2 w-full"
-        />
-        <div className="flex space-x-2 my-2">
-          <button
-            type="button"
-            onClick={startRecording}
-            className="bg-blue-500 text-white p-2"
-            disabled={isRecording}
-          >
-            Start Recording
+    <div className="p-4 relative">
+      {/* Top-Right User Icon or Login Button */}
+      <div className="absolute top-4 right-4">
+        {isLoggedIn ? (
+          <div className="relative">
+            {/* Circle with first letter of email */}
+            <button 
+              onClick={() => setShowMenu(!showMenu)} 
+              className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold"
+            >email
+              {email.charAt(0).toUpperCase()}
+            </button>
+            
+            {/* Dropdown Menu */}
+            {showMenu && (
+              <div className="absolute right-0 mt-2 bg-white shadow-lg rounded p-2">
+                <p className="px-4 py-2 text-gray-700">{email}</p>
+                <button 
+                  onClick={handleLogout} 
+                  className="bg-red-500 text-white px-4 py-2 rounded w-full mt-2"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <button onClick={() => router.push("#login")} className="bg-blue-500 text-white px-4 py-2 rounded">
+            Login
           </button>
-          <button
-            type="button"
-            onClick={stopRecording}
-            className="bg-red-500 text-white p-2"
-            disabled={!isRecording}
-          >
-            Stop Recording
-          </button>
-        </div>
-        <button type="submit" className="bg-green-500 text-white p-2 mt-2">
-          Add Note
-        </button>
-        <button onClick={handleNavigateToNotes} className="bg-blue-500 text-white p-2 mt-2">
-          View Notes
-        </button>
-      </form>
+        )}
+      </div>
 
-      {/* <div className="mt-4">
-        <ul>
-          {filteredNotes.length > 0 ? (
-            filteredNotes.map((note, index) => (
-              <li key={index} className="mb-4">
-                <div className="p-4 border border-gray-300 rounded-lg shadow-md">
-                  <h3 className="font-bold text-xl">{note.subject}</h3>
-                  <p className="text-gray-500">{note.timestamp}</p>
-                  <p className="mt-2">{note.text}</p>
-                  {note.url && (
-                    <a href={note.url} className="text-blue-500 block mt-2">
-                      {note.url}
-                    </a>
-                  )}
-                  {note.image && (
-                    <img src={note.image} alt="Uploaded" className="mt-2 w-32 h-32 object-cover rounded" />
-                  )}
-                </div>
-              </li>
-            ))
-          ) : (
-            <p>No notes found.</p>
-          )}
-        </ul>
-      </div> */}
+      {/* Login Form (Only if Not Logged In) */}
+      {!isLoggedIn ? (
+        <div id="login">
+          <h1 className="text-2xl font-bold mb-4">Login</h1>
+          <form onSubmit={handleLogin} className="mb-4">
+            <div>
+              <label>Email:</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="border p-2 mb-2 w-full"
+              />
+            </div>
+            <div>
+              <label>Password:</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="border p-2 mb-2 w-full"
+              />
+            </div>
+            <button type="submit" className="bg-blue-500 text-white p-2 mt-2">
+              Login
+            </button>
+            {error && <p className="text-red-500">{error}</p>}
+          </form>
+        </div>
+      ) : (
+        <>
+          <h1 className="text-2xl font-bold mb-4">Note-Taking App</h1>
+          
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search notes"
+            className="border p-2 mb-4 w-full"
+          />
+          <form onSubmit={handleSubmit} className="mb-4">
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Subject"
+              className="border p-2 mb-2 w-full"
+            />
+            <textarea
+              value={textNote}
+              onChange={(e) => setTextNote(e.target.value)}
+              placeholder="Write your note"
+              className="border p-2 mb-2 w-full h-32"
+            />
+            <input
+              type="url"
+              value={urlNote}
+              onChange={(e) => setUrlNote(e.target.value)}
+              placeholder="Enter URL"
+              className="border p-2 mb-2 w-full"
+            />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setImageNote(e.target.files[0])}
+              className="border p-2 mb-2 w-full"
+            />
+            <button type="submit" className="bg-green-500 text-white p-2 mt-2">
+              Add Note
+            </button>
+          </form>
+        </>
+      )}
     </div>
   );
 }
